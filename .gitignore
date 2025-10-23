@@ -143,13 +143,18 @@ env.bak/
 venv.bak/
 
 # Datasets
+
 songs/
 *.wav
 *prompt.txt
 *lyric.txt
 *.mp3
 *.csv
-
+*.json
+*.arrow
+#check points 
+chkpts/
+checkpoints/
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -26,7 +26,13 @@ from tqdm import tqdm
 import random
 import os
 from acestep.pipeline_ace_step import ACEStepPipeline
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
+# In the Pipeline.__init__ method, replace the tokenizer section:
+def __init__(self):
+    
 
 matplotlib.use("Agg")
 torch.backends.cudnn.benchmark = False
@@ -55,7 +61,56 @@ class Pipeline(LightningModule):
         adapter_name: str = "lora_adapter",
     ):
         super().__init__()
+    self.save_hyperparameters()
+    
+    # Initialize scheduler
+    self.scheduler = self.get_scheduler()
 
+    # step 1: load model
+    acestep_pipeline = ACEStepPipeline(checkpoint_dir)
+    acestep_pipeline.load_checkpoint(acestep_pipeline.checkpoint_dir)
+
+    transformers = acestep_pipeline.ace_step_transformer.float().cpu()
+    transformers.enable_gradient_checkpointing()
+
+    # Load LoRA config with the working module names
+    assert lora_config_path is not None, "Please provide a LoRA config path"
+    
+    try:
+        with open(lora_config_path, encoding="utf-8") as f:
+            lora_config_dict = json.load(f)
+        
+        from peft import LoraConfig
+        lora_config = LoraConfig(**lora_config_dict)
+        
+        print("🔄 Adding LoRA adapter with compatible modules...")
+        transformers.add_adapter(adapter_config=lora_config, adapter_name=adapter_name)
+        
+        # Enable the adapter
+        transformers.set_adapter(adapter_name)
+        
+        print(f"✅ LoRA adapter '{adapter_name}' added successfully!")
+        
+        # Print training statistics
+        total_params = sum(p.numel() for p in transformers.parameters())
+        trainable_params = sum(p.numel() for p in transformers.parameters() if p.requires_grad)
+        
+        print(f"📊 Model Parameters:")
+        print(f"   Total parameters: {total_params:,}")
+        print(f"   Trainable parameters: {trainable_params:,}")
+        print(f"   Percentage trainable: {(trainable_params/total_params)*100:.2f}%")
+        
+        self.adapter_name = adapter_name
+        
+    except Exception as e:
+        print(f"❌ Failed to add LoRA adapter: {e}")
+        print("🔄 Falling back to full fine-tuning...")
+        # Enable all parameters for training
+        for param in transformers.parameters():
+            param.requires_grad = True
+        self.adapter_name = None
+
+    self.transformers = transformers
         self.save_hyperparameters()
         self.is_train = train
         self.T = T
