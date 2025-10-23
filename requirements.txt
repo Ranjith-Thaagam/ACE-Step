@@ -22,3 +22,5 @@ peft
 tensorboard
 tensorboardX
 triton-windows
+sentencepiece
+transformers
